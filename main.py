@@ -21,7 +21,7 @@ class BlockBlast:
         self.limit = 0
         self.log = log
 
-        self.shapes = [7, 15, 31, 1057, 33825, 1082401, 1569, 3105, 225, 57, 7201, 1825, 4231, 1063]
+        self.shapes = [1, 3, 33, 7, 1057, 15, 33825, 31, 1082401, 1825, 7201, 1063, 4231, 3105, 1569, 225, 57, 2115, 1059, 2145, 195, 51, 561, 4161, 4368, 49, 97, 67, 35]
 
     def __str__(self):
         _str = ""
@@ -124,16 +124,24 @@ class BlockBlast:
 
         if x <= 3 and y <= 3:
             for i in range(0,5):
-                grid[y+i][x:x+5] = [shape[i][j] for j in range(5)]
+                for j in range(0,5):
+                    if shape[i][j] > 0:
+                        grid[y+i][x+j] = shape[i][j]
         if x > 3 and y <= 3:
             for i in range(0,5):
-                grid[y+i][x:] = [shape[i][j] for j in range(7-x+1)]
+                for j in range(0,7-x):
+                    if shape[i][j] > 0:
+                        grid[y+i][x+j] = shape[i][j]
         if x <= 3 and y > 3:
             for i in range(0,7-y+1):
-                grid[y+i][x:x+5] = [shape[i][j] for j in range(5)]
+                for j in range(0,5):
+                    if shape[i][j] > 0:
+                        grid[y+i][x+j] = shape[i][j]
         if x > 3 and y > 3:
             for i in range(0,7-y+1):
-                grid[y+i][x:] = [shape[i][j] for j in range(7-x+1)]
+                for j in range(0,7-x):
+                    if shape[i][j] > 0:
+                        grid[y+i][x+j] = shape[i][j]
 
         self.score += sum(bytes_shape)
         
@@ -181,11 +189,15 @@ class BlockBlast:
                                         best = _dummy3.score
                                         best_moves = [[s1, i1, j1], [s2, i2, j2], [s3, i3, j3]]
 
+        if best_moves[0][0] == None:
+            print("Lost the game!")
+            return False
+
         for b in best_moves:
             self.put(b[0], b[1], b[2])
+        return True
 
     def auto_play(self):
-        while True:
-            s1, s2, s3 = random.sample(self.shapes, 3)
-            self.find_best(s1, s2, s3)
+        while self.find_best(random.sample(self.shapes, 1)[0], random.sample(self.shapes, 1)[0], random.sample(self.shapes, 1)[0]):
             print(self)
+        return
