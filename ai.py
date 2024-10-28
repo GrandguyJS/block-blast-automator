@@ -1,101 +1,103 @@
-from main import BlockBlast
-
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import random
 import numpy as np
+import random
+import pickle
+import math
+import copy
 
-# Define the neural network architecture
-class BlockBlastNet(nn.Module):
-    def __init__(self):
-        super(BlockBlastNet, self).__init__()
+def lerp(A, B, t):
+    return A+(B-A)*t
+
+def difference(A, B):
+    best = [float("inf"), None]
+    for i,a in enumerate(A):
+        difference = abs(np.mean(a-B))
+        if difference < best[0]:
+            best[0] = difference
+            best[1] = i
+    return best
+
+class NeuralNetwork():
+    def __init__(self, layers, amount):
+        self.layers = layers
+        self.amount = amount
+        self.generation = 1
+    def sigmoid(self, x):
+        return 1 / (1 + np.exp(-x))
+    def load(self, path=None):
+        if path is not None:
+            with open(path, 'rb') as file: 
+                parameters = pickle.load(file)
+                self.weights = [copy.deepcopy(parameters[0]) for _ in range(self.amount)]
+                self.biases = [copy.deepcopy(parameters[1]) for _ in range(self.amount)]
+                self.mutate()
+                self.mutate()
+            return
+        self.weights = []
+        self.biases = []
+        for _ in range(self.amount):
+            weights = []
+            biases = []
+            for i,v in enumerate(self.layers[:-1]):
+                weights.append(np.random.randn(self.layers[i+1], v) * 0.1)
+                biases.append(np.zeros((self.layers[i+1], 1)))
+            self.weights.append(weights)
+            self.biases.append(biases)
+        return
+    def save(self, path):
+        with open(path, 'wb') as file: 
+            pickle.dump([self.weights[0], self.biases[0]], file)
+        return
+    def mutate(self):
+        weights = self.weights
+        biases = self.biases
+
+        mutation_rate = min(1, 1 / (math.log(self.generation, 2) + 1e-15))
+
+        for x in range(1, self.amount): # Leave out first
+            for i in range(0, len(weights[x])):
+                random_weights = np.random.uniform(-1, 1, weights[x][i].shape)
+                weights[x][i] = lerp(weights[x][i], random_weights, mutation_rate)
+                
+            for i in range(0, len(biases[x])):
+                random_biases = np.random.uniform(-1, 1, biases[x][i].shape)
+                biases[x][i] = lerp(biases[x][i], random_biases, mutation_rate)
+        return
+
+    def forward(self, X):
+        weights, biases = self.weights, self.biases
+        self.inputValue = X
+
+        cache = [[X.T] for _ in range(self.amount)]
+
+        for i in range(self.amount):
+            for j in range(0, len(weights[i])):
+                cache[i].append(np.dot(weights[i][j], cache[i][-1]) + biases[i][j])
+                cache[i].append(self.sigmoid(cache[i][-1]))
         
-        self.fc1 = nn.Linear(139, 512)  
-        self.ln1 = nn.LayerNorm(512)  # Use LayerNorm instead of BatchNorm
-        
-        self.fc2 = nn.Linear(512, 1024)  
-        self.ln2 = nn.LayerNorm(1024)  # Use LayerNorm instead of BatchNorm
-        
-        self.fc3 = nn.Linear(1024, 512)  
-        self.ln3 = nn.LayerNorm(512)  # Use LayerNorm instead of BatchNorm
-        
-        self.fc4 = nn.Linear(512, 24)  
-        self.dropout = nn.Dropout(p=0.5)  
-        
-        self.relu = nn.ReLU()
-        
-        self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.parameters(), lr=0.001)
+        return [x[-1].T for x in cache]
+    
+    def selection(self, index):
+        self.weights = [copy.deepcopy(self.weights[index]) for _ in range(self.amount)]
+        self.biases = [copy.deepcopy(self.biases[index]) for _ in range(self.amount)]
+        self.mutate()
+        self.generation+=1
+        return
 
-    def forward(self, x):
-        x = self.relu(self.ln1(self.fc1(x)))  # Apply first layer and layer norm
-        x = self.dropout(x)                    # Apply dropout
-        x = self.relu(self.ln2(self.fc2(x)))  # Apply second layer and layer norm
-        x = self.dropout(x)                    # Apply dropout
-        x = self.relu(self.ln3(self.fc3(x)))  # Apply third layer and layer norm
-        x = self.fc4(x)
-        x = torch.sigmoid(x)
-        return np.array(x)[0]
+"""X = [[0,0], [0,1], [1, 0], [1,1]]
+Y = [[0], [1], [1], [0]]
+    
 
-    def get_input(self, grid, shape1, shape2, shape3):
-        _input = np.array(grid).flatten()
+path = "model/parameters.pkl"
 
-        shapes = [shape1, shape2, shape3]
-        for shape in shapes:
-            bytes_shape = [int(bit) for bit in bin(shape)[2:]]
-            bytes_shape.extend([0 for _ in range(25-len(bytes_shape))])
-            _input = np.append(_input, np.array(bytes_shape))
+ai = NeuralNetwork([2, 3, 1], 3)
+ai.load(path)
 
-        return _input
+res = ai.forward(np.array(X))
 
-    def train(self, generations = 10000):
-        for i in range(generations):
-            self.game = BlockBlast()
-            shapes = random.sample(self.game.shapes, 3)
-            _input = self.get_input(self.game.grid, shapes[0], shapes[1], shapes[2])
+for i in range(0, 10000):
+    diff = difference(res, Y)
+    print("Difference: ", diff[0])
+    ai.selection(diff[1])
+    res = ai.forward(np.array(X))   
 
-            input_tensor = torch.tensor(_input, dtype=torch.float32).unsqueeze(0)  # Add a batch dimension
-
-            with torch.no_grad(): 
-                output = self.forward(input_tensor)
-
-            action_vector = np.round(output.squeeze()).astype(int).tolist()
-
-            actions = []
-            actions.extend(action_vector[:8])
-            actions.extend(action_vector[8:16])
-            actions.extend(action_vector[16:])
-
-            num1, num2, num3 = int(''.join(map(str, actions[:2])), 2), int(''.join(map(str, actions[8:10])), 2), int(''.join(map(str, actions[16:18])), 2)
-            x1, x2, x3 = int(''.join(map(str, actions[2:5])), 2), int(''.join(map(str, actions[10:13])), 2), int(''.join(map(str, actions[18:21])), 2)
-            y1, y2, y3 = int(''.join(map(str, actions[5:8])), 2), int(''.join(map(str, actions[13:16])), 2), int(''.join(map(str, actions[21:24])), 2)
-
-            if num1 > 2 or num2 > 2 or num3 > 2 or num1 == num2 or num1 == num3 or num2 == num3 or num1 == num3:
-                loss = torch.tensor(10.0, dtype=torch.float32, requires_grad=True)
-            else:
-                loss = 0.0
-
-                if not self.game.put(shapes[num1], x1, y1):
-                    loss += 1.0
-                if not self.game.put(shapes[num2], x2, y2):
-                    loss += 1.0
-                if not self.game.put(shapes[num3], x3, y3):
-                    loss += 1.0
-
-
-                loss = torch.tensor(loss / (3.0 + 1e-8), dtype=torch.float32, requires_grad=True)
-
-            # Backpropagation
-            self.optimizer.zero_grad()  # Zero the gradients
-            loss.backward()  # Compute gradients
-            self.optimizer.step()  # Update weights
-
-            print(f"Generation {i + 1}/{generations}, Loss: {loss.item()}, Score: {self.game.score}") 
-            print(self.game) 
-
-loaded_model = BlockBlastNet()
-loaded_model.load_state_dict(torch.load('block_blast_model.pth'))
-loaded_model.train()
-
-torch.save(loaded_model.state_dict(), 'block_blast_model.pth')
+ai.save(path)"""

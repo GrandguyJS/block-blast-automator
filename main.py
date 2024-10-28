@@ -21,7 +21,7 @@ class BlockBlast:
         self.limit = 0
         self.log = log
 
-        self.shapes = [1, 3, 33, 7, 1057, 15, 33825, 31, 1082401, 1825, 7201, 1063, 4231, 3105, 1569, 225, 57, 2115, 1059, 2145, 195, 51, 561, 4161, 4368, 49, 97, 67, 35]
+        self.shapes = [1, 3, 33, 7, 1057, 15, 33825, 31, 1082401, 1825, 7201, 4231, 3105, 1569, 225, 57, 2115, 1059, 2145, 195, 51, 561, 4161, 4368, 49, 97, 67, 35]
 
     def __str__(self):
         _str = ""
@@ -31,6 +31,11 @@ class BlockBlast:
         _str += str(self.score)
 
         return _str
+
+    def reset(self):
+        self.grid = [[0 for _ in range(8)] for _ in range(8)]
+        self.score = 0
+        self.combo = 1
 
     def eval(self):
         grid = self.grid
